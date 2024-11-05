@@ -8,7 +8,7 @@ import taiwanbus as twbus
 import asyncio
 import argparse
 
-globaldata = {"route": "", "stop": "", "path": "", "sec": 0, "usersec": 0, "msg": "", "bus": [], "recentnotify": "", "realtime": False}
+globaldata = {"route": "", "stop": "", "path": "", "sec": 0, "usersec": 0, "msg": "", "bus": [], "recentnotify": "", "updated": False, "realtime": False, "tts": False}
 
 
 def echo(*msg, level="INFO"):
@@ -68,6 +68,12 @@ def send_notify(title, msg):
     if not globaldata["recentnotify"] == title + msg:
         os.system(f"termux-notification -t \"{title}\" -i termuxtwbus -c \"{msg}\"")
         globaldata["recentnotify"] = title + msg
+        if globaldata["tts"] and globaldata["updated"]:
+            tts(f'{title.split("[")[0]} {msg.split("[")[0]}')
+
+def tts(msg):
+    print(msg)
+    os.system(f"termux-tts-speak -l zh_TW \"{msg}\"")
 
 async def realtime_notify():
     while True:
@@ -123,11 +129,13 @@ async def main(args):
         globaldata["usersec"] = args.intimenotify
         globaldata["sec"] = 999999
         globaldata["realtime"] = args.realtime
+        globaldata["tts"] = args.tts
         while True:
             try:
                 data = await gettime(args.stopid)
                 echo("Got data", data["sec"])
                 globaldata.update(data)
+                globaldata["updated"] = True
             except Exception as e:
                 echo("無法更新公車資訊。你可能未連接至網際網路。", e, level="WARN")
             await asyncio.sleep(args.checktime)
@@ -143,6 +151,7 @@ if __name__=="__main__":
     parser_time.add_argument("-t", "--time", help="當公車在幾秒內到站提醒", type=int, dest="intimenotify", default=300)
     parser_time.add_argument("-c", "--checktime", help="檢查間隔時間", type=int, dest="checktime", default=60)
     parser_time.add_argument("-r", "--realtime", help="即時發送訊息", dest="realtime", action='store_true', default=False)
+    parser_time.add_argument("--tts", help="使用文字轉語音", dest="tts", action='store_true', default=False)
     args = parser.parse_args()
     try:
         asyncio.run(main(args))
