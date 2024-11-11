@@ -2,6 +2,7 @@
 # Require Termux:API
 # not done yet.
 # 針對空位檢測。
+import sys
 import time
 import json
 import youbike
@@ -44,8 +45,13 @@ def gentext(station):
         return "臥槽你真幸運。"
 
 def get_location(provider="gps"):
-    ret = subprocess.Popen(["termux-location", "-p", provider]).read()
-    return json.loads(ret)
+    process = subprocess.Popen(["termux-location", "-p", provider], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+    
+    if process.returncode == 0:
+        return json.loads(out)
+    else:
+        raise Exception(f"Error getting location: {err.decode('utf-8')}")
 
 def checknear(lat, lon, distance, provider="gps"):
     echo("Start checking device's location...")
