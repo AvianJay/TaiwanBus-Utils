@@ -123,56 +123,78 @@ def index():
 
 @app.route("/search")
 def search():
+    # Check required parameters
     required_args = ["type", "query", "provider"]
     for arg in required_args:
         if arg not in request.args:
-            return "Invaild request."
+            return jsonify({"error": "Invalid request. Missing required parameters."}), 400
+    
+    search_type = request.args.get("type")
+    query = request.args.get("query")
+    provider = request.args.get("provider")
     supported_types = ["stop", "route"]
-    if request.args.get("type") not in supported_types:
-        return "Invaild request."
-    taiwanbus.update_provider(request.args.get("provider"))
-    if request.args.get("type") == "stop":
-        if request.args.get("provider") == "twn":
-            return "{\"error\":\"區域twn不支持站點查詢！\"}"
-        stops = asyncio.run(taiwanbus.fetch_stops_by_name(request.args.get("query")))
-        return stops
-    elif request.args.get("type") == "route":
-        route = asyncio.run(taiwanbus.fetch_routes_by_name(request.args.get("query")))
-        return route 
-    return "[]"
+
+    if search_type not in supported_types:
+        return jsonify({"error": f"Unsupported type '{search_type}'. Supported types: {supported_types}"}), 400
+    
+    taiwanbus.update_provider(provider)
+    
+    try:
+        if search_type == "stop":
+            if provider == "twn":
+                return jsonify({"error": "Provider 'twn' does not support stop searches."}), 400
+            stops = asyncio.run(taiwanbus.fetch_stops_by_name(query))
+            return jsonify(stops)
+        
+        elif search_type == "route":
+            routes = asyncio.run(taiwanbus.fetch_routes_by_name(query))
+            return jsonify(routes)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/getroutestop")
 def getroutestop():
     required_args = ["stopid", "routekey", "provider"]
     for arg in required_args:
         if arg not in request.args:
-            return "Invaild request."
-    taiwanbus.update_provider(request.args.get("provider"))
-    stop_info = {}
-    route = asyncio.run(taiwanbus.fetch_route(int(request.args.get("routekey"))))[0]
-    route_info = asyncio.run(taiwanbus.get_complete_bus_info(int(request.args.get("routekey"))))
-    for path_id, path_data in route_info.items():
-        route_name = path_data["name"]
-        stops = path_data["stops"]
-        for i, stop in enumerate(stops):
-            if stop["stop_id"] == int(request.args.get("stopid")):
-                stop_info.update(stop)
-                stop_info["route_name"] = route["route_name"]
-                if stop_info["msg"]:
-                    stop_info["generated_info"] = f"{route['route_name']} - {stop_name} {msg}\n"
-                elif stop_info["sec"] and int(stop_info["sec"]) > 0:
-                    minutes = int(stop_info["sec"]) // 60
-                    seconds = int(stop_info["sec"]) % 60
-                    stop_info["generated_info"] = f"{route['route_name']} - {stop_info['stop_name']} 還有{minutes}分{seconds}秒"
-                else:
-                    stop_info["generated_info"] = f"{route['route_name']} - {stop_info['stop_name']} 進站中"
+            return jsonify({"error": "Invalid request. Missing required parameters."}), 400
 
-                if stop_info["bus"]:
-                    for bus in stop_info["bus"]:
-                        bus_id = bus["id"]
-                        bus_full = "已滿" if bus["full"] == "1" else "未滿"
-                        stop_info["generated_info"] += f" [{bus_id} {bus_full}]"
-    return json.dumps(stop_info)
+    stopid = int(request.args.get("stopid"))
+    routekey = int(request.args.get("routekey"))
+    provider = request.args.get("provider")
+
+    taiwanbus.update_provider(provider)
+    
+    try:
+        route = asyncio.run(taiwanbus.fetch_route(routekey))[0]
+        route_info = asyncio.run(taiwanbus.get_complete_bus_info(routekey))
+        stop_info = {}
+
+        for path_id, path_data in route_info.items():
+            for stop in path_data["stops"]:
+                if stop["stop_id"] == stopid:
+                    stop_info.update(stop)
+                    stop_info["route_name"] = route["route_name"]
+                    
+                    if stop_info.get("msg"):
+                        stop_info["generated_info"] = f"{route['route_name']} - {stop_info['stop_name']} {stop_info['msg']}"
+                    elif stop_info.get("sec") and int(stop_info["sec"]) > 0:
+                        minutes = int(stop_info["sec"]) // 60
+                        seconds = int(stop_info["sec"]) % 60
+                        stop_info["generated_info"] = f"{route['route_name']} - {stop_info['stop_name']} 還有 {minutes} 分 {seconds} 秒"
+                    else:
+                        stop_info["generated_info"] = f"{route['route_name']} - {stop_info['stop_name']} 進站中"
+                    
+                    if stop_info.get("bus"):
+                        for bus in stop_info["bus"]:
+                            bus_id = bus["id"]
+                            bus_full = "已滿" if bus["full"] == "1" else "未滿"
+                            stop_info["generated_info"] += f" [{bus_id} {bus_full}]"
+        
+        return jsonify(stop_info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5284)
