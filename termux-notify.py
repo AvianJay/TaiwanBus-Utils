@@ -109,6 +109,7 @@ async def realtime_counter():
         await asyncio.sleep(1)
 
 async def main(args):
+    twbus.update_provider(args.provider)
     if args.cmd == "keep":
         stop = await twbus.fetch_stop(stopid)
         routeid = stop[0]["route_key"]
@@ -142,6 +143,7 @@ async def main(args):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="TaiwanBus for Termux")
+    parser.add_argument("-p", "--provider", help="區域資料庫", dest="provider", default="twn")
     subparsers = parser.add_subparsers(dest="cmd")
     parser_keep = subparsers.add_parser("keep", help="持續發送模式")
     parser_time = subparsers.add_parser("time", help="在快到站的時候發送")
