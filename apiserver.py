@@ -4,10 +4,28 @@ import asyncio
 import json
 app = Flask(__name__)
 
-config = {
+default_config = {
     "host": "0.0.0.0",
-    "port": 5284
+    "port": 5284,
+    "ssl": False,
+    "sslcert": "fullchain.pem",
+    "sslkey": "privkey.pem"
 }
+cfgupdated = False
+
+if os.path.exists("config.apiserver.json"):
+    config = json.load(open("config.apiserver.json", "r"))
+    for k in default_config.keys():
+        if k not in config.keys():
+            config[k] = default_config[k]
+            cfgupdated = True
+    if cfgupdated:
+        json.dump(config, open("config.apiserver.json", "w"))
+        print("已經更新了config.apiserver.json，請檢查！")
+else:
+    config = default_config
+    json.dump(config, open("config.apiserver.json", "w"))
+    print("已經更新了config.apiserver.json，請檢查！")
 
 @app.route("/")
 def index():
@@ -202,4 +220,7 @@ def getroutestop():
 
 
 if __name__ == '__main__':
-    app.run(host=config["host"], port=config["port"])
+    if config["ssl"]:
+        app.run(host=config["host"], port=config["port"], ssl_context=(config["sslcert"], config["sslkey"]))
+    else:
+        app.run(host=config["host"], port=config["port"])
