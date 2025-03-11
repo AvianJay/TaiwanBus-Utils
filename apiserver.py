@@ -2,6 +2,7 @@ from flask import Flask, request, render_template, redirect, url_for, jsonify
 import taiwanbus
 import asyncio
 import json
+import os
 app = Flask(__name__)
 
 default_config = {
