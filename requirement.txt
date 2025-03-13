@@ -1,2 +1,2 @@
-TaiwanBus==0.0.7
-YouBikePython==0.0.6
+TaiwanBus==0.0.8
+YouBikePython==0.0.7
