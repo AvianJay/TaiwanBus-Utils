@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template, redirect, url_for, jsonify
 import taiwanbus
+import youbike
 import asyncio
 import json
 import os
@@ -176,6 +177,7 @@ def search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/getroutestop")
 def getroutestop():
     required_args = ["stopid", "routekey", "provider"]
@@ -218,6 +220,20 @@ def getroutestop():
         return jsonify(stop_info)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/youbike/search")
+def ybsearch():
+    if "keyword" not in request.args:
+        return jsonify({"error": "Invalid request. Missing required parameters."}), 400
+    return youbike.getstationbyname(request.args.get("keyword"))
+
+
+@app.route("/youbike/location")
+def ybsearch():
+    if ["lat", "lon", "distance"] not in request.args:
+        return jsonify({"error": "Invalid request. Missing required parameters."}), 400
+    return youbike.getstationbylocation(request.args.get("lat"), request.args.get("lon"), request.args.get("distance"))
 
 
 if __name__ == '__main__':
