@@ -111,7 +111,7 @@ async def realtime_counter():
 async def main(args):
     twbus.update_provider(args.provider)
     if args.cmd == "keep":
-        stop = await twbus.fetch_stop(stopid)
+        stop = await twbus.fetch_stop(args.stopid)
         routeid = stop[0]["route_key"]
         route = await twbus.fetch_route(routeid)
         while True:
