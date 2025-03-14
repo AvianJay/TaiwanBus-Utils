@@ -115,6 +115,8 @@ def index():
 </head>
 <body>
     <h1>TaiwanBus API GUI</h1>
+
+    <a href="youbike">YouBikePython API</a>
     
     <h2>搜尋</h2>
     <label>Type:</label>
@@ -220,6 +222,116 @@ def getroutestop():
         return jsonify(stop_info)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/youbike")
+def ybindex():
+    return '''
+<!DOCTYPE HTML>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>YouBikePython API</title>
+    <script>
+        async function fetchData(apiUrl, params) {
+            const url = new URL(apiUrl);
+            Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                renderResult(data);
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                document.getElementById("result").innerHTML = "<p>取得資料錯誤</p>";
+            }
+        }
+
+        function renderResult(data) {
+            const resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = "";  // Clear previous result
+            
+            if (Array.isArray(data)) {
+                // If it's an array, render as a table
+                const table = document.createElement("table");
+                table.border = "1";
+                const headerRow = document.createElement("tr");
+
+                // Extract headers from first object keys
+                Object.keys(data[0]).forEach(key => {
+                    const th = document.createElement("th");
+                    th.innerText = key;
+                    headerRow.appendChild(th);
+                });
+                table.appendChild(headerRow);
+
+                // Render rows
+                data.forEach(item => {
+                    const row = document.createElement("tr");
+                    Object.values(item).forEach(value => {
+                        const td = document.createElement("td");
+                        td.innerText = value;
+                        row.appendChild(td);
+                    });
+                    table.appendChild(row);
+                });
+                resultDiv.appendChild(table);
+            } else if (typeof data === "object") {
+                // If it's an object, render as a list
+                const ul = document.createElement("ul");
+                for (const [key, value] of Object.entries(data)) {
+                    const li = document.createElement("li");
+                    li.innerText = `${key}: ${value}`;
+                    ul.appendChild(li);
+                }
+                resultDiv.appendChild(ul);
+            } else {
+                // Fallback for other data types
+                resultDiv.innerText = JSON.stringify(data, null, 2);
+            }
+        }
+
+        function handleSearch() {
+            const keyword = document.getElementById("query").value;
+
+            fetchData(window.location.href + "search", { keyword });
+        }
+
+        function handleStation() {
+            const id = document.getElementById("id").value;
+
+            fetchData(window.location.href + "/id", { id });
+        }
+
+        function handleLocation() {
+            const lat = document.getElementById("lat").value;
+            const lon = document.getElementById("lon").value;
+            const distance = document.getElementById("distance").value;
+
+            fetchData(window.location.href + "/location", { lat, lon, distance });
+        }
+    </script>
+</head>
+<body>
+    <h1>YouBikePython API GUI</h1>
+    
+    <h2>搜尋</h2>
+    <label>關鍵字:</label>
+    <input id="query" type="text">
+    <button onclick="handleSearch()">搜尋</button>
+
+    <h2>取得站點資訊</h2>
+    <label>站點ID:</label>
+    <input id="id" type="text">
+    <button onclick="handleStation()">獲取</button>
+
+    <h2>結果</h2>
+    <div id="result">
+        <p>還沒有取得資料。</p>
+    </div>
+</body>
+</html>
+'''
 
 
 @app.route("/youbike/search")
