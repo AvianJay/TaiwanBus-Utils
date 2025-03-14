@@ -226,20 +226,20 @@ def getroutestop():
 def ybsearch():
     if "keyword" not in request.args:
         return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    return youbike.getstationbyname(request.args.get("keyword"))
+    return jsonify(youbike.getstationbyname(request.args.get("keyword")))
 
 
 @app.route("/youbike/location")
 def yblocation():
     if ["lat", "lon", "distance"] not in request.args:
         return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    return youbike.getstationbylocation(float(request.args.get("lat")), float(request.args.get("lon")), float(request.args.get("distance")))
+    return jsonify(youbike.getstationbylocation(float(request.args.get("lat")), float(request.args.get("lon")), float(request.args.get("distance"))))
 
 @app.route("/youbike/id")
 def ybid():
     if ["id"] not in request.args:
         return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    return youbike.getstationbyid(request.args.get("id"))
+    return jsonify(youbike.getstationbyid(request.args.get("id")))
 
 
 if __name__ == '__main__':
