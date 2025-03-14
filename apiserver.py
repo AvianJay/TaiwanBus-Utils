@@ -352,9 +352,9 @@ def ybsearch():
 
 @app.route("/youbike/location")
 def yblocation():
-    if any(param not in request.args for param in ["lat", "lon", "distance"]):
+    if any(param not in request.args for param in ["lat", "lon"]):
         return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    return jsonify(youbike.getstationbylocation(float(request.args.get("lat")), float(request.args.get("lon")), float(request.args.get("distance"))))
+    return jsonify(youbike.getstationbylocation(float(request.args.get("lat")), float(request.args.get("lon")), float(request.args.get("distance", 0))))
 
 @app.route("/youbike/id")
 def ybid():
