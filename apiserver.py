@@ -294,7 +294,7 @@ def ybindex():
         function handleSearch() {
             const keyword = document.getElementById("query").value;
 
-            fetchData(window.location.href + "search", { keyword });
+            fetchData(window.location.href + "/search", { keyword });
         }
 
         function handleStation() {
@@ -325,6 +325,15 @@ def ybindex():
     <input id="id" type="text">
     <button onclick="handleStation()">獲取</button>
 
+    <h2>取得附近站點</h2>
+    <label>經度:</label>
+    <input id="lat" type="text">
+    <label>緯度:</label>
+    <input id="lon" type="text">
+    <label>距離(公尺):</label>
+    <input id="distance" type="text">
+    <button onclick="handleLocation()">獲取</button>
+
     <h2>結果</h2>
     <div id="result">
         <p>還沒有取得資料。</p>
@@ -343,7 +352,7 @@ def ybsearch():
 
 @app.route("/youbike/location")
 def yblocation():
-    if ["lat", "lon", "distance"] not in request.args:
+    if any(param not in request.args for param in ["lat", "lon", "distance"]):
         return jsonify({"error": "Invalid request. Missing required parameters."}), 400
     return jsonify(youbike.getstationbylocation(float(request.args.get("lat")), float(request.args.get("lon")), float(request.args.get("distance"))))
 
