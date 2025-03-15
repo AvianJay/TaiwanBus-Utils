@@ -15,8 +15,14 @@ jobs:
         os: [windows-latest, ubuntu-latest]
         python: [3.11.x, 3.12.x]
         include:
+          - os: windows-latest
+            arch: arm64
+          - os: windows-latest
+            arch: x86_64
           - os: ubuntu-latest
             arch: arm64
+          - os: ubuntu-latest
+            arch: x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -47,7 +53,7 @@ jobs:
       if: runner.os == 'Windows'
       uses: actions/upload-artifact@v4
       with:
-        name: apiserver_artifacts_windows_${{ matrix.python }}
+        name: apiserver_artifacts_windows_${{ matrix.arch }}_${{ matrix.python }}
         path: apiserver.exe
 
     - name: Upload Artifact (Linux)
