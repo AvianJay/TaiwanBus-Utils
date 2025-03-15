@@ -13,15 +13,8 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
-        arch: [x86_64]
+        arch: [x86_64, arm64]
         python: [3.11.x, 3.12.x]
-        include:
-          - os: windows-latest
-            arch: arm64
-            python: 3.11.x
-          - os: ubuntu-latest
-            arch: arm64
-            python: 3.11.x
 
     runs-on: ${{ matrix.os }}
 
