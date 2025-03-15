@@ -4,6 +4,8 @@ import youbike
 import asyncio
 import json
 import os
+import time
+import threading
 app = Flask(__name__)
 
 default_config = {
@@ -11,7 +13,10 @@ default_config = {
     "port": 5284,
     "ssl": False,
     "sslcert": "fullchain.pem",
-    "sslkey": "privkey.pem"
+    "sslkey": "privkey.pem",
+    "auto_update_database": True,
+    "auto_update_database_cooldown": 1440,
+    "database_dir": False # False: use default | (str): dir name
 }
 cfgupdated = False
 
@@ -22,12 +27,23 @@ if os.path.exists("config.apiserver.json"):
             config[k] = default_config[k]
             cfgupdated = True
     if cfgupdated:
-        json.dump(config, open("config.apiserver.json", "w"))
-        print("已經更新了config.apiserver.json，請檢查！")
+        json.dump(config, open("config.apiserver.json", "w"), ensure_ascii=False, indent=4)
+        print("INFO: 已經更新了config.apiserver.json，請檢查！")
 else:
+    print("INFO: First start!")
     config = default_config
-    json.dump(config, open("config.apiserver.json", "w"))
-    print("已經更新了config.apiserver.json，請檢查！")
+    json.dump(config, open("config.apiserver.json", "w"), ensure_ascii=False, indent=4)
+    print("INFO: 已經更新了config.apiserver.json，請檢查！")
+
+def auto_update_database():
+    while True:
+        print("INFO: Start updating TaiwanBus database...")
+        try:
+            taiwanbus.update_database(info=True)
+            print("INFO: Update done.")
+            time.sleep(config["auto_update_database_cooldown"] * 60)
+        except Exception as e:
+            print(f"ERROR: {e}")
 
 @app.route("/")
 def index():
@@ -364,6 +380,22 @@ def ybid():
 
 
 if __name__ == '__main__':
+    if config["database_dir"]:
+        if os.path.isfile(config["database_dir"]):
+            print("ERROR: Database dir is a file! Using Default dir.")
+        else:
+            if not os.path.isdir(config["database_dir"]):
+                os.mkdir(config["database_dir"])
+            taiwanbus.home = config["database_dir"]
+    if config["auto_update_database"]:
+        print("INFO: Starting auto update database thread.")
+        update_db_thread = threading.Thread(target=auto_update_database)
+        update_db_thread.daemon = True
+        update_db_thread.start()
+    else:
+        print("INFO: Disabled auto update database. Update on start.")
+        taiwanbus.update_database()
+        print("INFO: Update done.")
     if config["ssl"]:
         app.run(host=config["host"], port=config["port"], ssl_context=(config["sslcert"], config["sslkey"]))
     else:
