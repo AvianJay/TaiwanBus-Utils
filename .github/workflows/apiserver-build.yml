@@ -12,10 +12,12 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-2019, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
+        arch: [x86_64, arm64]
         python: [3.11.x, 3.12.x]
 
     runs-on: ${{ matrix.os }}
+    arch: ${{ matrix.arch }}
 
     steps:
     - uses: actions/checkout@v2
@@ -33,7 +35,7 @@ jobs:
 
     - name: Build Executable (Windows)
       if: runner.os == 'Windows'
-      run: pyinstaller --noconfirm --distpath %cd%\ --onefile --console --clean %cd%\apiserver.py
+      run: pyinstaller --noconfirm --distpath . --onefile --console --clean apiserver.py
       shell: cmd
 
     - name: Build Executable (Linux)
@@ -44,12 +46,12 @@ jobs:
       if: runner.os == 'Windows'
       uses: actions/upload-artifact@v4
       with:
-        name: apiserver_artifacts_windows_${{ matrix.python }}
+        name: apiserver_artifacts_windows_${{ matrix.arch }}_${{ matrix.python }}
         path: apiserver.exe
 
     - name: Upload Artifact (Linux)
       if: runner.os == 'Linux'
       uses: actions/upload-artifact@v4
       with:
-        name: apiserver_artifacts_linux_${{ matrix.python }}
+        name: apiserver_artifacts_linux_${{ matrix.arch }}_${{ matrix.python }}
         path: apiserver
