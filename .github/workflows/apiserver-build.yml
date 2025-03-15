@@ -12,8 +12,11 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, ubuntu-24.04-arm]
+        os: [windows-latest, ubuntu-latest]
         python: [3.11.x, 3.12.x]
+        include:
+          - os: ubuntu-latest
+            arch: arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -51,5 +54,5 @@ jobs:
       if: runner.os == 'Linux'
       uses: actions/upload-artifact@v4
       with:
-        name: apiserver_artifacts_${{ matrix.os }}_${{ matrix.python }}
+        name: apiserver_artifacts_linux_${{ matrix.arch }}_${{ matrix.python }}
         path: apiserver
