@@ -374,7 +374,7 @@ def yblocation():
 
 @app.route("/youbike/id")
 def ybid():
-    if ["id"] not in request.args:
+    if "id" not in request.args:
         return jsonify({"error": "Invalid request. Missing required parameters."}), 400
     return jsonify(youbike.getstationbyid(request.args.get("id")))
 
