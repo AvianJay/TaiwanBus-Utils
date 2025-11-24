@@ -379,6 +379,11 @@ def ybid():
     return jsonify(youbike.getstationbyid(request.args.get("id")))
 
 
+@app.route("/youbike/all")
+def yball():
+    return jsonify(youbike.getallstations())
+
+
 if __name__ == '__main__':
     if config["database_dir"]:
         if os.path.isfile(config["database_dir"]):
