@@ -383,6 +383,17 @@ def ybid():
 def yball():
     return jsonify(youbike.getallstations())
 
+@app.route("/youbike/original/json/station-yb2.json")
+def yboriginaljson():
+    return jsonify(youbike.getallstations())
+
+@app.route("/youbike/original/json/station-min-yb2.json")
+def yboriginalminjson():
+    return jsonify(youbike.getallstations(parkinginfo=False))
+
+@app.route("/youbike/original/json/area-all.json")
+def yboriginalareajson():
+    return jsonify(youbike.getallareas())
 
 if __name__ == '__main__':
     if config["database_dir"]:
