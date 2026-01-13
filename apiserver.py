@@ -1,4 +1,7 @@
-from flask import Flask, request, render_template, redirect, url_for, jsonify
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field
+from typing import Optional
 import taiwanbus
 import youbike
 import asyncio
@@ -6,7 +9,9 @@ import json
 import os
 import time
 import threading
-app = Flask(__name__)
+import math
+
+app = FastAPI()
 
 default_config = {
     "host": "0.0.0.0",
@@ -45,7 +50,28 @@ def auto_update_database():
         except Exception as e:
             print(f"ERROR: {e}")
 
-@app.route("/")
+# Haversine distance calculation in meters
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the great-circle distance between two points on Earth in meters."""
+    R = 6371000  # Earth radius in meters
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
+# Pydantic response model for nearest bus endpoints
+class NearestBusResponse(BaseModel):
+    bus_lat: float = Field(..., description="Current latitude of the nearest bus")
+    bus_lon: float = Field(..., description="Current longitude of the nearest bus")
+    distance_meters: float = Field(..., description="Distance between the reference point and the bus in meters")
+    eta_seconds: Optional[int] = Field(None, description="Estimated time of arrival in seconds (if available)")
+
+
+@app.get("/", response_class=HTMLResponse)
 def index():
     return '''
 <!DOCTYPE HTML>
@@ -164,49 +190,41 @@ def index():
 '''
 
 
-@app.route("/search")
-def search():
-    # Check required parameters
-    required_args = ["type", "query", "provider"]
-    for arg in required_args:
-        if arg not in request.args:
-            return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    
-    search_type = request.args.get("type")
-    query = request.args.get("query")
-    provider = request.args.get("provider")
+@app.get("/search")
+def search(
+    type: str = Query(..., description="Search type: 'stop' or 'route'"),
+    query: str = Query(..., description="Search query string"),
+    provider: str = Query(..., description="Provider: 'tcc', 'tpe', or 'twn'")
+):
     supported_types = ["stop", "route"]
 
-    if search_type not in supported_types:
-        return jsonify({"error": f"Unsupported type '{search_type}'. Supported types: {supported_types}"}), 400
+    if type not in supported_types:
+        raise HTTPException(status_code=400, detail=f"Unsupported type '{type}'. Supported types: {supported_types}")
     
     taiwanbus.update_provider(provider)
     
     try:
-        if search_type == "stop":
+        if type == "stop":
             if provider == "twn":
-                return jsonify({"error": "Provider 'twn' does not support stop searches."}), 400
+                raise HTTPException(status_code=400, detail="Provider 'twn' does not support stop searches.")
             stops = asyncio.run(taiwanbus.fetch_stops_by_name(query))
-            return jsonify(stops)
+            return stops
         
-        elif search_type == "route":
+        elif type == "route":
             routes = asyncio.run(taiwanbus.fetch_routes_by_name(query))
-            return jsonify(routes)
+            return routes
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.route("/getroutestop")
-def getroutestop():
-    required_args = ["stopid", "routekey", "provider"]
-    for arg in required_args:
-        if arg not in request.args:
-            return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-
-    stopid = int(request.args.get("stopid"))
-    routekey = int(request.args.get("routekey"))
-    provider = request.args.get("provider")
-
+@app.get("/getroutestop")
+def getroutestop(
+    stopid: int = Query(..., description="Stop ID"),
+    routekey: int = Query(..., description="Route key"),
+    provider: str = Query(..., description="Provider: 'tcc', 'tpe', or 'twn'")
+):
     taiwanbus.update_provider(provider)
     
     try:
@@ -235,12 +253,180 @@ def getroutestop():
                             bus_full = "已滿" if bus["full"] == "1" else "未滿"
                             stop_info["generated_info"] += f" [{bus_id} {bus_full}]"
         
-        return jsonify(stop_info)
+        return stop_info
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.route("/youbike")
+@app.get("/nearest_bus_by_coord", response_model=NearestBusResponse)
+def nearest_bus_by_coord(
+    lat: float = Query(..., ge=-90, le=90, description="Latitude of the reference point"),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude of the reference point"),
+    route_id: Optional[int] = Query(None, description="Route ID (route_key) to filter buses"),
+    provider: str = Query("tcc", description="Provider: 'tcc', 'tpe', or 'twn'")
+):
+    """
+    Find the nearest bus to the given coordinates.
+    Optionally filter by route_id to find buses on a specific route.
+    Returns the nearest bus position, distance, and ETA if available.
+    """
+    taiwanbus.update_provider(provider)
+    
+    try:
+        # Get all buses for the specified route, or all routes if not specified
+        if route_id is not None:
+            buses_data = taiwanbus.getbus(route_id)
+        else:
+            raise HTTPException(status_code=400, detail="route_id parameter is required to search for buses")
+        
+        if not buses_data:
+            raise HTTPException(status_code=404, detail="No bus data available for the specified route")
+        
+        nearest_bus = None
+        min_distance = float('inf')
+        nearest_eta = None
+        
+        # Iterate through all stops and their associated buses
+        for stop_data in buses_data:
+            if "bus" in stop_data and stop_data["bus"]:
+                # Get stop coordinates
+                stop_lat = float(stop_data.get("lat", 0))
+                stop_lon = float(stop_data.get("lon", 0))
+                
+                # Get ETA info for this stop
+                eta_seconds = None
+                if stop_data.get("sec"):
+                    try:
+                        eta_seconds = int(stop_data["sec"])
+                    except (ValueError, TypeError):
+                        eta_seconds = None
+                
+                # Check each bus at this stop
+                for bus in stop_data["bus"]:
+                    # Use stop coordinates as bus position (API provides stop-based position)
+                    bus_lat = stop_lat
+                    bus_lon = stop_lon
+                    
+                    if bus_lat == 0 and bus_lon == 0:
+                        continue
+                    
+                    distance = haversine_distance(lat, lon, bus_lat, bus_lon)
+                    
+                    if distance < min_distance:
+                        min_distance = distance
+                        nearest_bus = {"lat": bus_lat, "lon": bus_lon}
+                        nearest_eta = eta_seconds
+        
+        if nearest_bus is None:
+            raise HTTPException(status_code=404, detail="No buses found matching the specified criteria")
+        
+        return NearestBusResponse(
+            bus_lat=nearest_bus["lat"],
+            bus_lon=nearest_bus["lon"],
+            distance_meters=round(min_distance, 2),
+            eta_seconds=nearest_eta if nearest_eta and nearest_eta > 0 else None
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/nearest_bus_by_stop", response_model=NearestBusResponse)
+def nearest_bus_by_stop(
+    stop_id: int = Query(..., description="Stop ID to find nearest bus to"),
+    route_id: Optional[int] = Query(None, description="Route ID (route_key) to filter buses"),
+    provider: str = Query("tcc", description="Provider: 'tcc', 'tpe', or 'twn'")
+):
+    """
+    Find the nearest bus to a specific stop.
+    Uses the stop's coordinates to calculate distance to available buses.
+    Returns the nearest bus position, distance, and ETA if available.
+    """
+    taiwanbus.update_provider(provider)
+    
+    try:
+        # Get stop information to get coordinates
+        stop_info = asyncio.run(taiwanbus.fetch_stop(stop_id))
+        
+        if not stop_info:
+            raise HTTPException(status_code=404, detail=f"Stop with ID {stop_id} not found")
+        
+        stop = stop_info[0]
+        stop_lat = float(stop.get("lat", 0))
+        stop_lon = float(stop.get("lon", 0))
+        
+        if stop_lat == 0 and stop_lon == 0:
+            raise HTTPException(status_code=400, detail="Stop coordinates not available")
+        
+        # Use route_id if provided, otherwise use the route_key from the stop
+        target_route_id = route_id if route_id is not None else stop.get("route_key")
+        
+        if target_route_id is None:
+            raise HTTPException(status_code=400, detail="No route information available for this stop")
+        
+        buses_data = taiwanbus.getbus(target_route_id)
+        
+        if not buses_data:
+            raise HTTPException(status_code=404, detail="No bus data available for the specified route")
+        
+        nearest_bus = None
+        min_distance = float('inf')
+        nearest_eta = None
+        
+        # Iterate through all stops and their associated buses
+        for bus_stop_data in buses_data:
+            if "bus" in bus_stop_data and bus_stop_data["bus"]:
+                # Get bus stop coordinates
+                bus_stop_lat = float(bus_stop_data.get("lat", 0))
+                bus_stop_lon = float(bus_stop_data.get("lon", 0))
+                
+                # Check if this is the target stop for ETA
+                eta_seconds = None
+                if str(bus_stop_data.get("id")) == str(stop_id):
+                    if bus_stop_data.get("sec"):
+                        try:
+                            eta_seconds = int(bus_stop_data["sec"])
+                        except (ValueError, TypeError):
+                            eta_seconds = None
+                
+                # Check each bus at this stop
+                for bus in bus_stop_data["bus"]:
+                    bus_lat = bus_stop_lat
+                    bus_lon = bus_stop_lon
+                    
+                    if bus_lat == 0 and bus_lon == 0:
+                        continue
+                    
+                    distance = haversine_distance(stop_lat, stop_lon, bus_lat, bus_lon)
+                    
+                    if distance < min_distance:
+                        min_distance = distance
+                        nearest_bus = {"lat": bus_lat, "lon": bus_lon}
+                        # Only use ETA if this bus is at the target stop
+                        if str(bus_stop_data.get("id")) == str(stop_id):
+                            nearest_eta = eta_seconds
+        
+        if nearest_bus is None:
+            raise HTTPException(status_code=404, detail="No buses found on the route")
+        
+        return NearestBusResponse(
+            bus_lat=nearest_bus["lat"],
+            bus_lon=nearest_bus["lon"],
+            distance_meters=round(min_distance, 2),
+            eta_seconds=nearest_eta if nearest_eta and nearest_eta > 0 else None
+        )
+    except HTTPException:
+        raise
+    except taiwanbus.exceptions.UnsupportedDatabaseError:
+        raise HTTPException(status_code=400, detail="Provider does not support stop queries")
+    except taiwanbus.exceptions.DatabaseNotFoundError:
+        raise HTTPException(status_code=500, detail="Database not found. Please update the database first.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/youbike", response_class=HTMLResponse)
 def ybindex():
     return '''
 <!DOCTYPE HTML>
@@ -359,43 +545,42 @@ def ybindex():
 '''
 
 
-@app.route("/youbike/search")
-def ybsearch():
-    if "keyword" not in request.args:
-        return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    return jsonify(youbike.getstationbyname(request.args.get("keyword")))
+@app.get("/youbike/search")
+def ybsearch(keyword: str = Query(..., description="Search keyword")):
+    return youbike.getstationbyname(keyword)
 
 
-@app.route("/youbike/location")
-def yblocation():
-    if any(param not in request.args for param in ["lat", "lon"]):
-        return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    return jsonify(youbike.getstationbylocation(float(request.args.get("lat")), float(request.args.get("lon")), float(request.args.get("distance", 0))))
+@app.get("/youbike/location")
+def yblocation(
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    distance: float = Query(0, description="Distance in meters")
+):
+    return youbike.getstationbylocation(lat, lon, distance)
 
-@app.route("/youbike/id")
-def ybid():
-    if "id" not in request.args:
-        return jsonify({"error": "Invalid request. Missing required parameters."}), 400
-    return jsonify(youbike.getstationbyid(request.args.get("id")))
+@app.get("/youbike/id")
+def ybid(id: str = Query(..., description="Station ID")):
+    return youbike.getstationbyid(id)
 
 
-@app.route("/youbike/all")
+@app.get("/youbike/all")
 def yball():
-    return jsonify(youbike.getallstations())
+    return youbike.getallstations()
 
-@app.route("/youbike/original/json/station-yb2.json")
+@app.get("/youbike/original/json/station-yb2.json")
 def yboriginaljson():
-    return jsonify(youbike.getallstations())
+    return youbike.getallstations()
 
-@app.route("/youbike/original/json/station-min-yb2.json")
+@app.get("/youbike/original/json/station-min-yb2.json")
 def yboriginalminjson():
-    return jsonify(youbike.getallstations(parkinginfo=False))
+    return youbike.getallstations(parkinginfo=False)
 
-@app.route("/youbike/original/json/area-all.json")
+@app.get("/youbike/original/json/area-all.json")
 def yboriginalareajson():
-    return jsonify(youbike.getallareas())
+    return youbike.getallareas()
 
 if __name__ == '__main__':
+    import uvicorn
     if config["database_dir"]:
         if os.path.isfile(config["database_dir"]):
             print("ERROR: Database dir is a file! Using Default dir.")
@@ -413,6 +598,6 @@ if __name__ == '__main__':
         taiwanbus.update_database()
         print("INFO: Update done.")
     if config["ssl"]:
-        app.run(host=config["host"], port=config["port"], ssl_context=(config["sslcert"], config["sslkey"]))
+        uvicorn.run(app, host=config["host"], port=config["port"], ssl_certfile=config["sslcert"], ssl_keyfile=config["sslkey"])
     else:
-        app.run(host=config["host"], port=config["port"])
+        uvicorn.run(app, host=config["host"], port=config["port"])
