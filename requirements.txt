@@ -1,3 +1,5 @@
 TaiwanBus==0.0.8
 YouBikePython==0.1.2
-flask~=3.1.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
