@@ -262,22 +262,18 @@ def getroutestop(
 def nearest_bus_by_coord(
     lat: float = Query(..., ge=-90, le=90, description="Latitude of the reference point"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude of the reference point"),
-    route_id: Optional[int] = Query(None, description="Route ID (route_key) to filter buses"),
+    route_id: int = Query(..., description="Route ID (route_key) to filter buses"),
     provider: str = Query("tcc", description="Provider: 'tcc', 'tpe', or 'twn'")
 ):
     """
     Find the nearest bus to the given coordinates.
-    Optionally filter by route_id to find buses on a specific route.
+    Requires route_id to specify which route to search for buses.
     Returns the nearest bus position, distance, and ETA if available.
     """
     taiwanbus.update_provider(provider)
     
     try:
-        # Get all buses for the specified route, or all routes if not specified
-        if route_id is not None:
-            buses_data = taiwanbus.getbus(route_id)
-        else:
-            raise HTTPException(status_code=400, detail="route_id parameter is required to search for buses")
+        buses_data = taiwanbus.getbus(route_id)
         
         if not buses_data:
             raise HTTPException(status_code=404, detail="No bus data available for the specified route")

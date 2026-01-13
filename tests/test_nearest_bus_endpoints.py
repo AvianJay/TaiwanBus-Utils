@@ -175,8 +175,7 @@ class TestNearestBusByCoord:
             params={"lat": 24.0, "lon": 120.0}
         )
         
-        assert response.status_code == 400
-        assert "route_id" in response.json()["detail"].lower()
+        assert response.status_code == 422
     
     @patch('taiwanbus.getbus')
     @patch('taiwanbus.update_provider')
