@@ -262,8 +262,7 @@ def getstopsbypos():
             routekey = int(routekey)
             filtered_stops = []
             for stop in stops:
-                routes = busapi.fetch_routes_by_stop(stop["stop_id"])
-                if any(route["route_key"] == routekey for route in routes):
+                if stop["route_key"] == routekey:
                     filtered_stops.append(stop)
             stops = filtered_stops
         return jsonify(stops)
