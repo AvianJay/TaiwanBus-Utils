@@ -7,6 +7,8 @@ import json
 import os
 import time
 import threading
+import markdown
+
 app = Flask(__name__)
 
 default_config = {
@@ -163,6 +165,36 @@ def index():
 </body>
 </html>
 '''
+
+
+@app.route("/docs")
+def docs():
+    if os.path.exists("API_DOCS.md"):
+        with open("API_DOCS.md", "r", encoding="utf-8") as f:
+            content = f.read()
+            html = markdown.markdown(content, extensions=['tables'])
+            return f'''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>TaiwanBus API Documentation</title>
+    <style>
+        body {{ font-family: sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }}
+        table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+        th {{ background-color: #f2f2f2; }}
+        code {{ background-color: #f9f9f9; padding: 2px 4px; border-radius: 4px; }}
+        pre {{ background-color: #f9f9f9; padding: 10px; border-radius: 4px; overflow-x: auto; }}
+    </style>
+</head>
+<body>
+    {html}
+</body>
+</html>
+'''
+    else:
+        return "API_DOCS.md not found.", 404
 
 
 @app.route("/search")
