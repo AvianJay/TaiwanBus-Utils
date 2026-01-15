@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template, redirect, url_for, jsonify
-import taiwanbus
+from taiwanbus import api as busapi
+from taiwanbus.api import Provider
 import youbike
 import asyncio
 import json
@@ -39,7 +40,7 @@ def auto_update_database():
     while True:
         print("INFO: Start updating TaiwanBus database...")
         try:
-            taiwanbus.update_database(info=True)
+            busapi.update_database(info=True)
             print("INFO: Update done.")
             time.sleep(config["auto_update_database_cooldown"] * 60)
         except Exception as e:
@@ -180,17 +181,17 @@ def search():
     if search_type not in supported_types:
         return jsonify({"error": f"Unsupported type '{search_type}'. Supported types: {supported_types}"}), 400
     
-    taiwanbus.update_provider(provider)
+    busapi.update_provider(Provider(provider))
     
     try:
         if search_type == "stop":
             if provider == "twn":
                 return jsonify({"error": "Provider 'twn' does not support stop searches."}), 400
-            stops = asyncio.run(taiwanbus.fetch_stops_by_name(query))
+            stops = busapi.fetch_stops_by_name(query)
             return jsonify(stops)
         
         elif search_type == "route":
-            routes = asyncio.run(taiwanbus.fetch_routes_by_name(query))
+            routes = busapi.fetch_routes_by_name(query)
             return jsonify(routes)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -207,11 +208,11 @@ def getroutestop():
     routekey = int(request.args.get("routekey"))
     provider = request.args.get("provider")
 
-    taiwanbus.update_provider(provider)
+    busapi.update_provider(Provider(provider))
     
     try:
-        route = asyncio.run(taiwanbus.fetch_route(routekey))[0]
-        route_info = asyncio.run(taiwanbus.get_complete_bus_info(routekey))
+        route = busapi.fetch_route(routekey)[0]
+        route_info = busapi.get_complete_bus_info(routekey)
         stop_info = {}
 
         for path_id, path_data in route_info.items():
@@ -236,6 +237,54 @@ def getroutestop():
                             stop_info["generated_info"] += f" [{bus_id} {bus_full}]"
         
         return jsonify(stop_info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/getstopsbypos")
+def getstopsbypos():
+    # required parameters: lat, lon, distance, provider
+    # optional parameters: routekey
+    required_args = ["lat", "lon", "distance", "provider"]
+    for arg in required_args:
+        if arg not in request.args:
+            return jsonify({"error": "Invalid request. Missing required parameters."}), 400
+    lat = float(request.args.get("lat"))
+    lon = float(request.args.get("lon"))
+    distance = float(request.args.get("distance"))
+    provider = request.args.get("provider")
+    routekey = request.args.get("routekey", None)
+    busapi.update_provider(Provider(provider))
+    try:
+        stops = busapi.fetch_stops_nearby(lat, lon, distance)
+        # filter by routekey if provided
+        if routekey:
+            routekey = int(routekey)
+            filtered_stops = []
+            for stop in stops:
+                routes = busapi.fetch_routes_by_stop(stop["stop_id"])
+                if any(route["route_key"] == routekey for route in routes):
+                    filtered_stops.append(stop)
+            stops = filtered_stops
+        return jsonify(stops)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/getstopspassby")
+def getstopspassby():
+    # required parameters: stopid, provider
+    # optional parameters: radius
+    required_args = ["stopid", "provider"]
+    for arg in required_args:
+        if arg not in request.args:
+            return jsonify({"error": "Invalid request. Missing required parameters."}), 400
+    stopid = int(request.args.get("stopid"))
+    provider = request.args.get("provider")
+    radius = float(request.args.get("radius", 100))  # default radius 100 meters
+    busapi.update_provider(Provider(provider))
+    try:
+        routes = busapi.fetch_stops_passby(stopid, radius=radius)
+        return jsonify(routes)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -402,7 +451,7 @@ if __name__ == '__main__':
         else:
             if not os.path.isdir(config["database_dir"]):
                 os.mkdir(config["database_dir"])
-            taiwanbus.home = config["database_dir"]
+            busapi.home = config["database_dir"]
     if config["auto_update_database"]:
         print("INFO: Starting auto update database thread.")
         update_db_thread = threading.Thread(target=auto_update_database)
@@ -410,7 +459,7 @@ if __name__ == '__main__':
         update_db_thread.start()
     else:
         print("INFO: Disabled auto update database. Update on start.")
-        taiwanbus.update_database()
+        busapi.update_database()
         print("INFO: Update done.")
     if config["ssl"]:
         app.run(host=config["host"], port=config["port"], ssl_context=(config["sslcert"], config["sslkey"]))
