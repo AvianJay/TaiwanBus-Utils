@@ -1,4 +1,4 @@
-# TaiwanBus-Utils API Documentation
+# TaiwanBus API Documentation
 
 本文件描述了 `apiserver.py` 提供的 RESTful API 端點。這些 API 主要分為 **TaiwanBus API** (公車資訊) 與 **YouBike API** (YouBike 資訊) 兩大類。
 
