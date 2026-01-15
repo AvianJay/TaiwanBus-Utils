@@ -2,7 +2,7 @@ from flask import Flask, request, render_template, redirect, url_for, jsonify
 from taiwanbus import api as busapi
 from taiwanbus.api import Provider
 import youbike
-import asyncio
+from youbike import measure
 import json
 import os
 import time
@@ -243,17 +243,21 @@ def getroutestop():
 
 @app.route("/getstopsbypos")
 def getstopsbypos():
-    # required parameters: lat, lon, distance, provider
-    # optional parameters: routekey
-    required_args = ["lat", "lon", "distance", "provider"]
+    # required parameters: lat, lon, provider
+    # optional parameters: routekey, distance(<1000)
+    required_args = ["lat", "lon", "provider"]
     for arg in required_args:
         if arg not in request.args:
             return jsonify({"error": "Invalid request. Missing required parameters."}), 400
     lat = float(request.args.get("lat"))
     lon = float(request.args.get("lon"))
-    distance = float(request.args.get("distance"))
+    distance = float(request.args.get("distance", 100))  # default distance 100 meters
     provider = request.args.get("provider")
     routekey = request.args.get("routekey", None)
+
+    if distance > 1000:
+        return jsonify({"error": "Distance too large. Maximum is 1000 meters."}), 400
+
     busapi.update_provider(Provider(provider))
     try:
         stops = busapi.fetch_stops_nearby(lat, lon, distance)
@@ -265,6 +269,8 @@ def getstopsbypos():
                 if stop["route_key"] == routekey:
                     filtered_stops.append(stop)
             stops = filtered_stops
+        for stop in stops:
+            stop["distance"] = measure(lat, lon, stop["lat"], stop["lon"])
         return jsonify(stops)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -272,7 +278,7 @@ def getstopsbypos():
 @app.route("/getstopspassby")
 def getstopspassby():
     # required parameters: stopid, provider
-    # optional parameters: radius
+    # optional parameters: radius(<1000)
     required_args = ["stopid", "provider"]
     for arg in required_args:
         if arg not in request.args:
@@ -280,10 +286,14 @@ def getstopspassby():
     stopid = int(request.args.get("stopid"))
     provider = request.args.get("provider")
     radius = float(request.args.get("radius", 100))  # default radius 100 meters
+
+    if radius > 1000:
+        return jsonify({"error": "Radius too large. Maximum is 1000 meters."}), 400
+
     busapi.update_provider(Provider(provider))
     try:
-        routes = busapi.fetch_stops_passby(stopid, radius=radius)
-        return jsonify(routes)
+        stops = busapi.fetch_stops_passby(stopid, radius=radius)
+        return jsonify(stops)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
